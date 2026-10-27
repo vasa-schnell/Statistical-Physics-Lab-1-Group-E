@@ -1,110 +1,47 @@
+"""Combinatoria en escala logarítmica (sin overflow)."""
+from __future__ import annotations
 
-"""Combinatorial calculations for the statistical physics laboratory."""
+import math
 
-from math import comb as integer_comb, exp, log, sqrt
 import numpy as np
-from scipy.special import gammaln
+from scipy.special import gammaln, logsumexp
+
+LN2 = math.log(2.0)
 
 
-def binomial_coefficient(n: int, k: int) -> int:
-    """Return the exact number of ways to choose k objects from n."""
-    if not isinstance(n, int) or isinstance(n, bool):
-        raise TypeError("n must be an integer.")
-    if not isinstance(k, int) or isinstance(k, bool):
-        raise TypeError("k must be an integer.")
-    if n < 0:
-        raise ValueError("n must be non-negative.")
-    if k < 0 or k > n:
-        return 0
-    return integer_comb(n, k)
+def log_omega(N: int, k):
+    """ln Ω(N,k) = lnΓ(N+1) - lnΓ(k+1) - lnΓ(N-k+1). Admite k escalar o array."""
+    k = np.asarray(k, dtype=float)
+    return gammaln(N + 1) - gammaln(k + 1) - gammaln(N - k + 1)
 
 
-def log_binomial_coefficient(n: int, k: int) -> float:
-    """Return the natural logarithm of the binomial coefficient."""
-    if not isinstance(n, int) or isinstance(n, bool):
-        raise TypeError("n must be an integer.")
-    if not isinstance(k, int) or isinstance(k, bool):
-        raise TypeError("k must be an integer.")
-    if n < 0:
-        raise ValueError("n must be non-negative.")
-    if k < 0 or k > n:
-        raise ValueError("k must satisfy 0 <= k <= n.")
-
-    return float(
-        gammaln(n + 1) - gammaln(k + 1) - gammaln(n - k + 1)
-    )
+def omega_exact(N: int, k: int) -> int:
+    """Ω(N,k) exacto con enteros de Python (precisión arbitraria)."""
+    return math.comb(N, k)
 
 
-def multiplicity(n: int, k: int) -> int:
-    """Return the number of microstates with exactly k heads."""
-    return binomial_coefficient(n, k)
+def log_probability(N: int, k):
+    """ln P_k = ln Ω(N,k) - N ln 2."""
+    return log_omega(N, k) - N * LN2
 
 
-def macrostate_probability(n: int, k: int) -> float:
-    """Return the probability of exactly k heads for fair coins."""
-    if n < 0:
-        raise ValueError("n must be non-negative.")
-    if k < 0 or k > n:
-        return 0.0
-    return exp(log_binomial_coefficient(n, k) - n * log(2))
+def probability(N: int, k):
+    """P_k = Ω(N,k) / 2^N."""
+    return np.exp(log_probability(N, k))
 
 
-def ln_omega(n: int, k: int) -> float:
-    """Return ln(Omega), the logarithm of the multiplicity."""
-    return log_binomial_coefficient(n, k)
+def distribution(N: int) -> tuple[np.ndarray, np.ndarray]:
+    """Devuelve (k, P_k) para k = 0..N."""
+    k = np.arange(N + 1)
+    return k, probability(N, k)
 
 
-def probability(n, k) -> float:
-    """Return the binomial probability, also allowing real-valued k.
-
-    Real-valued k is used only for the continuous extension in plots.
-    """
-    if n < 0:
-        raise ValueError("n must be non-negative.")
-    if k < 0 or k > n:
-        return 0.0
-
-    log_omega = (
-        gammaln(n + 1) - gammaln(k + 1) - gammaln(n - k + 1)
-    )
-    return float(exp(log_omega - n * log(2)))
+def probability_range(N: int, k_min: int, k_max: int) -> float:
+    """Probabilidad de que k esté en [k_min, k_max] (ambos incluidos)."""
+    k = np.arange(k_min, k_max + 1)
+    return float(np.exp(logsumexp(log_probability(N, k))))
 
 
-def cumulative_probability(n: int, k_min: int, k_max: int) -> float:
-    """Return the probability that the number of heads is in a range."""
-    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
-        raise ValueError("n must be a non-negative integer.")
-    if k_min > k_max:
-        raise ValueError("k_min must not exceed k_max.")
-
-    lower = max(0, k_min)
-    upper = min(n, k_max)
-
-    if lower > upper:
-        return 0.0
-
-    return float(sum(probability(n, k) for k in range(lower, upper + 1)))
-
-
-def distribution(n: int):
-    """Return arrays of head counts and their probabilities."""
-    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
-        raise ValueError("n must be a non-negative integer.")
-
-    k_values = np.arange(n + 1)
-    probabilities = np.array([probability(n, k) for k in k_values])
-    return k_values, probabilities
-
-
-def relative_width(n: float) -> float:
-    """Return the relative fluctuation sigma/mu = 1/sqrt(n)."""
-    if n <= 0:
-        raise ValueError("n must be positive.")
-    return 1.0 / sqrt(n)
-
-
-def ln_omega_abs_error(n: int, k: int) -> float:
-    """Compare log-gamma ln(Omega) with the logarithm of exact Omega."""
-    exact_log = log(binomial_coefficient(n, k))
-    calculated_log = log_binomial_coefficient(n, k)
-    return abs(calculated_log - exact_log)
+def delta_S_over_kB(N: int, k1: int, k2: int) -> float:
+    """ΔS/k_B = ln(Ω(N,k1)/Ω(N,k2)) = lnΩ1 - lnΩ2 (transición k1 -> k2)."""
+    return float(log_omega(N, k1) - log_omega(N, k2))
