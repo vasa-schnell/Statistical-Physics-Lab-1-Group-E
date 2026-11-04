@@ -1,4 +1,5 @@
 """Ejecuta todo el Lab 1: tablas, benchmarks y figuras (PDF vectorial)."""
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,6 +12,9 @@ from src import thermodynamics as th
 NIA_LAST_TWO_DIGITS = [79, 95, 84, 54]
 FIG_DIR = Path("report/figures")
 FIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Evita UnicodeEncodeError al imprimir Ω, σ, μ en terminales de Windows (cp1252)
+sys.stdout.reconfigure(encoding="utf-8")
 
 
 def main() -> None:
@@ -38,6 +42,7 @@ def main() -> None:
               f"RAM si fuese lista≈{r['list_bytes_estimate']/1e6:.0f} MB")
     n_max = ms.estimate_N_max(last["N"], last["time_mean"], 300.0)
     print(f"N_max estimado en 5 min ≈ {n_max:.1f}")
+    print(f"float(Ω(N, N/2)) desborda para N > {comb.float_overflow_N()}")
 
     # ---------- 3.3 Distribuciones ----------
     fig, ax = plt.subplots(1, 2, figsize=(11, 4))
@@ -83,6 +88,25 @@ def main() -> None:
     print(f"P(k={k_mid}) (más probable)     = {Pmid:.4e}   (ΔS/kB = 0)")
     print(f"P(k∈[{k_mid-10},{k_mid+10}])         = {Pint:.6f}")
     print(f"ΔS/kB (k={k1} -> k={k2})     = {dS:.4f}   (Ω ratio = {np.exp(dS):.4e})")
+
+    # ---------- 4.2 Resto de la Parte 2 ----------
+    Pd = comb.probability_range(N, k_mid - 20, k_mid + 20)
+    print(f"P(cruces∈[{k_mid-20},{k_mid+20}])      = {Pd:.6f}   (simetría caras/cruces)")
+    S_max = float(comb.log_omega(N, k_mid))
+    print(f"S_max/kB = {S_max:.4f}   S_max = {th.K_B * S_max:.4e} J/K")
+    for label, (a, b) in {"e": (k_mid + 25, k_mid), "f": (k_mid + 10, k_mid),
+                          "g": (k_mid, 20)}.items():
+        x = comb.delta_S_over_kB(N, a, b)
+        print(f"({label}) ΔS(k={a}, k={b}): ΔS/kB = {x:.4f}   ΔS = {th.K_B * x:.4e} J/K")
+    err = comb.log_omega_error_bound(N, k_mid)
+    print(f"Incertidumbre: |δ lnΩ| ≲ {err:.1e}  ->  δS ≈ {th.K_B * err:.1e} J/K")
+
+    t = th.waiting_time_seconds(N, 8)
+    years = t / th.SECONDS_PER_YEAR
+    print(f"(h) Espera para k=8: {t:.3e} s = {years:.3e} años "
+          f"= {years / th.AGE_OF_UNIVERSE_YEARS:.3e} edades del universo")
+    ratio = comb.likelihood_ratio(N, k_mid, M - 10, M + 10)
+    print(f"(i) P(k={k_mid}) / P({M-10} ≤ k ≤ {M+10}) = {ratio:.4f}")
 
     # Figura con la distribución de N y marcas
     k, P = comb.distribution(N)

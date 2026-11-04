@@ -45,3 +45,25 @@ def probability_range(N: int, k_min: int, k_max: int) -> float:
 def delta_S_over_kB(N: int, k1: int, k2: int) -> float:
     """ΔS/k_B = ln(Ω(N,k1)/Ω(N,k2)) = lnΩ1 - lnΩ2 (transición k1 -> k2)."""
     return float(log_omega(N, k1) - log_omega(N, k2))
+
+
+def likelihood_ratio(N: int, k: int, k_min: int, k_max: int) -> float:
+    """P(k) / P(k_min <= k' <= k_max): un macroestado frente a un rango."""
+    return float(probability(N, k)) / probability_range(N, k_min, k_max)
+
+
+def log_omega_error_bound(N: int, k: int) -> float:
+    """Cota del error de redondeo de lnΩ: ε·(lnΓ(N+1) + lnΓ(k+1) + lnΓ(N-k+1))."""
+    eps = np.finfo(float).eps
+    return float(eps * (gammaln(N + 1) + gammaln(k + 1) + gammaln(N - k + 1)))
+
+
+def float_overflow_N() -> int:
+    """Mayor N (par) para el que float(Ω(N, N/2)) no desborda un float64."""
+    N = 2
+    while True:
+        try:
+            float(math.comb(N + 2, (N + 2) // 2))
+        except OverflowError:
+            return N
+        N += 2
