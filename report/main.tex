@@ -1,0 +1,424 @@
+% =====================================================================
+%  Statistical Physics - Lab 1: Microstates of a system of coins
+%  Group E  -  report/main.tex
+%
+%  HOW TO USE THIS FILE
+%  * Everything marked in red (\pend{...}) or with "% TODO" still has to
+%    be filled in by the team (names, NIAs, benchmark timings, ...).
+%  * All numerical results of Part 2 are collected in the "RESULTS" block
+%    below, so they only have to be changed in ONE place.
+%    They were computed for NIA digits [79, 95, 84, 54] -> M = 75, N = 175.
+%  * Figures are read from report/figures/. If a figure is missing the
+%    report still compiles and shows a red placeholder instead.
+%  * This skeleton was drafted with an AI assistant (Claude); log it in
+%    AI_STATEMENT.md and rewrite the explanations in your own words.
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Microstates of a System of Coins}
+\rhead{Statistical Physics --- Lab 1}
+\lfoot{UC3M}
+\rfoot{Page \thepage}
+
+% Red marker for anything that is still pending
+\newcommand{\pend}[1]{\textcolor{red}{#1}}
+
+% Include a figure if it exists, otherwise show a placeholder box
+\newcommand{\safefig}[2]{%
+  \IfFileExists{figures/#1}{\includegraphics[width=#2]{figures/#1}}%
+  {\fbox{\parbox[c][3cm][c]{#2}{\centering\pend{missing: figures/#1}\\(run \texttt{python main.py})}}}}
+
+% ---------------------------------------------------------------------
+%  RESULTS (Part 2) - N = 100 + M, NIA digits [79, 95, 84, 54]
+% ---------------------------------------------------------------------
+\newcommand{\resHM}{74.6160}            % harmonic mean of the NIA digits
+\newcommand{\resM}{75}                  % M = round(harmonic mean)
+\newcommand{\resN}{175}                 % N = 100 + M
+\newcommand{\resNhalf}{87}              % floor(N/2); k = 87 and 88 are equally probable
+\newcommand{\resPa}{1.0999\times10^{-19}}   % P(k = 30)
+\newcommand{\resPb}{6.0057\times10^{-2}}    % P(k = 87)
+\newcommand{\resPc}{0.88682}                % P(77 <= k <= 97)
+\newcommand{\resPd}{0.99809}                % P(67 <= k <= 107)
+\newcommand{\resSmaxkB}{118.488}            % S_max / k_B = ln Omega(N, 87)
+\newcommand{\resSmax}{1.6359\times10^{-21}} % S_max in J/K
+\newcommand{\resdSekB}{-6.9091}             % ln[Omega(112)/Omega(87)]
+\newcommand{\resdSe}{-9.5390\times10^{-23}}
+\newcommand{\resdSfkB}{-1.0247}             % ln[Omega(97)/Omega(87)]
+\newcommand{\resdSf}{-1.4148\times10^{-23}}
+\newcommand{\resdSgkB}{58.657}              % ln[Omega(87)/Omega(20)]
+\newcommand{\resdSg}{8.0984\times10^{-22}}
+\newcommand{\restSec}{2.582\times10^{39}}   % waiting time for k = 8, s
+\newcommand{\restYears}{8.18\times10^{31}}  % same, in years
+\newcommand{\restAges}{5.93\times10^{21}}   % same, in ages of the Universe
+\newcommand{\resRatio}{0.1576}              % P(k=87) / P(65 <= k <= 85)
+\newcommand{\resNOverflow}{1028}            % largest N with float(Omega(N,N/2)) finite
+\newcommand{\resLnErr}{3\times10^{-13}}     % bound on |delta ln Omega|
+\newcommand{\resSErr}{4\times10^{-36}}      % k_B * resLnErr, in J/K
+
+\title{\textbf{Microstates and Macroscopic Thermodynamics of a Binary System}\\[2pt]
+\large Statistical Physics --- Laboratory Practice 1}
+\author{%
+  \textbf{Group E}\\
+  Claudia Valiente Gutiérrez (NIA: 100524454, GitHub: @cvgggggg)\\
+  Elena Valenzuela Gómez (NIA: 100522984, GitHub: @elenavga)\\
+  Justin Ryan Kotrba (NIA: 100614295, GitHub: @JustinK05)\\
+  Vassily Martin Schnell (NIA: 100615779, GitHub: @vasa-schnell)\\[6pt]
+  \small Department of Physics, Universidad Carlos III de Madrid}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+We study a system of $N$ independent, unbiased coins as the simplest model of
+a two-state assembly. Microstates are enumerated exactly with bitwise
+operations and Python generators, multiplicities $\Omega(N,k)$ are evaluated
+in log-space through the log-gamma function to avoid floating-point overflow,
+and the narrowing of the macrostate distribution is followed up to the
+thermodynamic limit $N\to10^{23}$. For our team parameter $N=\resN$ we compute
+macrostate probabilities, Boltzmann entropy changes and waiting times, and we
+discuss their connection with the Second Law of Thermodynamics.
+\end{abstract}
+
+\noindent\textbf{Repository:}
+\url{https://github.com/vasa-schnell/Statistical-Physics-Lab-1-Group-E}
+(release \texttt{v1.0}).
+
+% =====================================================================
+\section{Introduction and objectives}
+% =====================================================================
+A \emph{microstate} is the full configuration of the $N$ coins (e.g.\
+\texttt{HHTHT} for $N=5$), whereas a \emph{macrostate} is fixed only by the
+number of heads $k$. Since every coin has two equally likely outcomes, all
+$2^N$ microstates are equiprobable and the multiplicity of a macrostate is
+\begin{equation}
+  \Omega(N,k)=\binom{N}{k}=\frac{N!}{k!\,(N-k)!},
+  \qquad \sum_{k=0}^{N}\Omega(N,k)=2^N .
+  \label{eq:omega}
+\end{equation}
+The probability of a macrostate is $P_k=\Omega(N,k)/2^N$ and its Boltzmann
+entropy is $S=k_B\ln\Omega$, with $k_B=1.380649\times10^{-23}\,\mathrm{J\,K^{-1}}$.
+The objectives are: (i) enumerate microstates and find the computational
+limits of brute force, (ii) obtain the macrostate distributions and their
+behaviour as $N\to10^{23}$, and (iii) compute probabilities and entropy
+changes for $N=100+M$ and interpret them thermodynamically.
+
+% =====================================================================
+\section{Methodology and collaborative workflow}
+% =====================================================================
+\subsection{Environment and reproducibility}
+All code runs in a Conda environment (\texttt{statphys\_lab1}, Python 3.11,
+NumPy, SciPy, Matplotlib, pytest) defined in \texttt{environment.yml}, so the
+results are identical on every team member's laptop.
+
+\subsection{Version control and repository architecture}
+Development followed a feature-branch workflow on GitHub: no direct pushes to
+\texttt{main}, every change was merged through a Pull Request approved by at
+least one other team member. The repository is organised as
+\begin{itemize}
+  \item \texttt{src/}: \texttt{microstates.py} (bitwise enumeration),
+        \texttt{combinatorics.py} (log-space $\Omega$ and $P_k$),
+        \texttt{thermodynamics.py} (entropy, $N=100+M$, waiting times);
+  \item \texttt{tests/}: \texttt{pytest} unit tests comparing the log-space
+        results with exact integer combinatorics;
+  \item \texttt{main.py}: runs every part and writes the figures to
+        \texttt{report/figures/};
+  \item \texttt{notebooks/}, \texttt{report/}: exploration and this report.
+\end{itemize}
+% TODO: add 1-2 sentences on how you split the work and reviewed each other's PRs.
+
+% =====================================================================
+\section{Computational analysis of microstates}
+% =====================================================================
+\subsection{Enumeration for $N=7$}
+Each microstate is stored as an integer $s\in[0,2^N)$ whose $i$-th bit is 1
+for heads, so the full space is generated with \texttt{range(1 << N)} inside a
+generator (\texttt{yield}) and the number of heads is the bit count of $s$.
+For $N=7$ there are $2^7=128$ microstates (Table~\ref{tab:n7}).
+
+\begin{table}[h]
+\centering
+\caption{Multiplicity $\Omega(7,k)$ and a representative microstate of each macrostate.}
+\label{tab:n7}
+\begin{tabular}{cccr}
+\toprule
+Heads $k$ & Tails $7-k$ & Sample microstate & $\Omega(7,k)$\\
+\midrule
+7 & 0 & \texttt{HHHHHHH} & 1\\
+6 & 1 & \texttt{HHHHHHT} & 7\\
+5 & 2 & \texttt{HHHHHTT} & 21\\
+4 & 3 & \texttt{HHHHTTT} & 35\\
+3 & 4 & \texttt{HHHTTTT} & 35\\
+2 & 5 & \texttt{HHTTTTT} & 21\\
+1 & 6 & \texttt{HTTTTTT} & 7\\
+0 & 7 & \texttt{TTTTTTT} & 1\\
+\midrule
+\multicolumn{3}{r}{Total} & 128\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Full-enumeration wall ($2^N$)}
+The cost of brute-force enumeration grows as $O(2^N)$: every extra coin
+doubles the run time. Using a generator the memory stays constant
+(only one state is alive at a time), whereas storing all states in a list
+would need $\approx 36\,\mathrm{B}\times2^N$ of RAM. Table~\ref{tab:bench}
+reports the measured times (mean $\pm$ standard deviation over 3 runs) and
+peak memory. Extrapolating $t(N)=t_{\mathrm{ref}}\,2^{N-N_{\mathrm{ref}}}$, the
+largest $N$ that can be fully enumerated within 5~minutes on our laptop is
+$N_{\max}=24+\log_2(300/5.857)\approx29.7$, i.e.\ $N_{\max}=29$
+($2^{29}\approx5.4\times10^{8}$ microstates). Each time $N$ increases by 2 the
+run time is multiplied by $\approx4.0$, confirming the $2^N$ scaling.
+
+\begin{table}[h]
+\centering
+\caption{Run time (mean $\pm$ standard deviation of 3 runs) and peak memory
+of the full enumeration, measured on an Intel laptop (12 logical CPUs)
+with Python 3.12 and \texttt{tracemalloc}.}
+\label{tab:bench}
+\begin{tabular}{rrccc}
+\toprule
+$N$ & $2^N$ & Time (s) & Peak RAM, generator & RAM if stored in a list\\
+\midrule
+16 & $6.55\times10^{4}$ & $0.034\pm0.007$ & 0.6~kB & $\approx 2.4$~MB\\
+18 & $2.62\times10^{5}$ & $0.092\pm0.004$ & 0.6~kB & $\approx 9.4$~MB\\
+20 & $1.05\times10^{6}$ & $0.366\pm0.011$ & 0.6~kB & $\approx 38$~MB\\
+22 & $4.19\times10^{6}$ & $1.449\pm0.008$ & 0.6~kB & $\approx 151$~MB\\
+24 & $1.68\times10^{7}$ & $5.857\pm0.037$ & 0.6~kB & $\approx 604$~MB\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Macrostate distributions ($N=20,50,80,100$)}
+Factorials overflow very quickly, so $\Omega$ is evaluated in log-space,
+\begin{equation}
+  \ln\Omega(N,k)=\ln\Gamma(N+1)-\ln\Gamma(k+1)-\ln\Gamma(N-k+1),
+  \qquad \ln P_k=\ln\Omega(N,k)-N\ln2 ,
+  \label{eq:lngamma}
+\end{equation}
+using \texttt{scipy.special.gammaln}, and only exponentiated at the end.
+Figure~\ref{fig:dist} shows that the distribution is peaked at $k=N/2$; the
+peak becomes higher in absolute $\Omega$ but, relative to $N$, narrower.
+
+\begin{figure}[h]
+\centering
+\safefig{distributions.pdf}{0.95\textwidth}
+\caption{Left: $P_k=\Omega(N,k)/2^N$ for $N=20,50,80,100$. Right: the same
+curves against $k/N$; the width shrinks as $1/\sqrt{N}$.}
+\label{fig:dist}
+\end{figure}
+
+\subsection{Limits of the direct binomial calculation}
+Python integers have arbitrary precision, so \texttt{math.comb} itself never
+overflows; the limit appears when $\Omega$ is converted to a double-precision
+float (maximum $\approx1.8\times10^{308}$) to divide, plot or take logarithms.
+Since $\Omega(N,N/2)\approx2^N\sqrt{2/(\pi N)}$, this happens for
+$N>\resNOverflow$. Working with $\ln\Omega$ removes the problem: $\ln\Omega$
+stays of order $N\ln2$, which is perfectly representable even for $N=10^{23}$.
+
+\subsection{Thermodynamic limit ($N\to10^{23}$)}
+Using Stirling's approximation, $\ln N!\approx N\ln N-N$, the binomial
+distribution tends to a Gaussian of mean $\mu=N/2$ and standard deviation
+$\sigma=\sqrt{N}/2$, so the relative fluctuation is
+\begin{equation}
+  \frac{\sigma}{\mu}=\frac{\sqrt{N}/2}{N/2}=\frac{1}{\sqrt{N}}
+  \;\xrightarrow[N=10^{23}]{}\;3.2\times10^{-12}.
+\end{equation}
+For a macroscopic system the fraction of heads is therefore fixed at $1/2$
+to about twelve significant digits (Fig.~\ref{fig:limit}), while
+$S_{\max}/k_B\approx N\ln2\approx6.9\times10^{22}$.
+
+\begin{figure}[h]
+\centering
+\safefig{thermodynamic_limit.pdf}{0.95\textwidth}
+\caption{Narrowing of the distribution and relative fluctuation
+$\sigma/\mu=1/\sqrt{N}$ up to $N=10^{23}$.}
+\label{fig:limit}
+\end{figure}
+
+% =====================================================================
+\section{Probabilities, entropy and thermodynamics}
+% =====================================================================
+\subsection{Parameter assignment}
+$M$ is the harmonic mean of the last two digits of the team members' NIAs,
+\begin{equation}
+  M=\frac{4}{\frac{1}{79}+\frac{1}{95}+\frac{1}{84}+\frac{1}{54}}=\resHM
+  \;\Rightarrow\; M=\resM,\qquad N=100+M=\resN .
+\end{equation}
+$M$ was rounded to the nearest integer. Because $N$ is odd, $N/2=87.5$ is not
+a valid number of heads; the two central macrostates $k=87$ and $k=88$ have
+the same multiplicity, and we take $k_{\mathrm{mid}}=\lfloor N/2\rfloor=\resNhalf$.
+
+\subsection{Probability calculations}
+\begin{table}[h]
+\centering
+\caption{Macrostate probabilities for $N=\resN$.}
+\label{tab:prob}
+\begin{tabular}{lll}
+\toprule
+Case & Macrostate / range & Probability\\
+\midrule
+(a) & $k=30$ heads & $\resPa$\\
+(b) & $k=\resNhalf$ heads (most probable) & $\resPb$\\
+(c) & $77\le k\le 97$ heads ($N/2\pm10$) & $\resPc$\\
+(d) & $67\le N-k\le 107$ tails ($N/2\pm20$) & $\resPd$\\
+\bottomrule
+\end{tabular}
+\end{table}
+Even the single most probable macrostate has only a 6\,\% probability, but a
+window of $\pm10$ heads around it already contains 89\,\% of all microstates
+and a window of $\pm20$ contains 99.8\,\%. By the head--tail symmetry,
+the range in (d) is the same whether it is counted in heads or tails.
+The state $k=30$, only 57 heads away from the centre, is $5\times10^{17}$
+times less likely than $k=87$: as $\sigma=\sqrt{N}/2\approx6.6$, it lies about
+$8.7\sigma$ below the mean (Fig.~\ref{fig:distN}).
+
+\begin{figure}[h]
+\centering
+\safefig{distribution_N.pdf}{0.6\textwidth}
+\caption{Macrostate distribution for $N=\resN$. Shaded: the window
+$N/2\pm10$ of case (c); dashed line: $k=30$ of case (a).}
+\label{fig:distN}
+\end{figure}
+
+\subsection{Entropy changes}
+With $S=k_B\ln\Omega$, the entropy change of a transition $k_1\to k_2$ is
+$\Delta S=S(k_2)-S(k_1)$; here we report $\Delta S_{k_1k_2}\equiv S(k_1)-S(k_2)=k_B\ln[\Omega(N,k_1)/\Omega(N,k_2)]$
+as defined in the manual. The maximum entropy is
+$S_{\max}=k_B\ln\Omega(\resN,\resNhalf)=\resSmax\,\mathrm{J\,K^{-1}}$
+($S_{\max}/k_B=\resSmaxkB$).
+
+\begin{table}[h]
+\centering
+\caption{Entropy differences $\Delta S_{k_1k_2}=S(k_1)-S(k_2)$ for $N=\resN$.}
+\label{tab:entropy}
+\begin{tabular}{llcc}
+\toprule
+Case & $k_1\to k_2$ & $\Delta S/k_B$ & $\Delta S$ (J/K)\\
+\midrule
+(e) & $N/2+25=112 \to 87$ (high $\to$ maximum disorder) & $\resdSekB$ & $\resdSe$\\
+(f) & $N/2+10=97 \to 87$ (moderate $\to$ maximum disorder) & $\resdSfkB$ & $\resdSf$\\
+(g) & $87 \to 20$ (maximum disorder $\to$ high order) & $\resdSgkB$ & $\resdSg$\\
+\bottomrule
+\end{tabular}
+\end{table}
+In (e) and (f) $\Delta S<0$ because $k_1$ is a less probable (more ordered)
+macrostate than $k_{\mathrm{mid}}$; in (g) $\Delta S>0$ because the reference
+state $k=20$ is far more ordered: $\Omega(87)/\Omega(20)\approx3\times10^{25}$.
+
+\paragraph{Uncertainty.} The only source of error is floating-point rounding
+in Eq.~\eqref{eq:lngamma} (machine epsilon $\epsilon\approx2.2\times10^{-16}$).
+Bounding the error of each $\ln\Gamma$ term by $\epsilon$ times its value gives
+$|\delta\ln\Omega|\lesssim\resLnErr$ (we checked that the actual difference
+with the exact integer result is $4\times10^{-14}$), i.e.\
+$\delta S\approx\resSErr\,\mathrm{J\,K^{-1}}$, completely negligible. The value
+of $k_B$ is exact in the SI since 2019.
+
+\subsection{Thermodynamic implications}
+\paragraph{(h) Waiting time.} If all $N$ coins are tossed once per second, the
+expected time to obtain exactly $k=8$ heads is
+\begin{equation}
+  t=\frac{1\,\mathrm{s}}{P_8}=\frac{2^N}{\Omega(N,8)}\,\mathrm{s}
+  =\restSec\,\mathrm{s}=\restYears\ \text{years},
+\end{equation}
+about $\restAges$ times the age of the Universe ($1.38\times10^{10}$ years):
+such an ordered state is, in practice, never observed.
+
+\paragraph{(i) Likelihood ratio.}
+\begin{equation}
+  \frac{P(k=\resNhalf)}{P(M-10\le k\le M+10)}
+  =\frac{\Omega(N,\resNhalf)}{\sum_{k=65}^{85}\Omega(N,k)}=\resRatio .
+\end{equation}
+% TODO: check with the lab manual that this is the intended comparison
+% (single state at N/2 vs. the whole range M +- 10).
+The ratio is smaller than one, which does not contradict the fact that
+$k=\resNhalf$ is the most probable macrostate: we are comparing a
+\emph{single} macrostate with a window of 21 macrostates. Since
+$M+10=85$ lies only two heads below the centre, the window $[65,85]$
+covers the whole left half of the peak and accumulates
+$P(65\le k\le85)=0.381$, i.e.\ about 6.3 times $P_{87}=0.060$.
+Per macrostate, however, the window has an average probability of
+$0.381/21=0.018$, so $k=\resNhalf$ is still 3.3 times more likely than a
+typical macrostate of the window, and incomparably more likely than its edge
+$k=65$, which lies $3.4\sigma$ from the mean
+($\Omega(87)/\Omega(65)\approx3.4\times10^{2}$).
+
+\paragraph{(j) Second Law.} The negative values of $\Delta S$ in (e) and (f)
+seem to violate the Second Law, which states that the entropy of an isolated
+system never decreases. However, the Second Law is not an exact law of
+mechanics but a statistical one. Every microstate is equally probable, so
+the system can fluctuate into a less probable macrostate, and this is what a
+negative $\Delta S$ describes. The probability of such a fluctuation is
+$\Omega(k_1)/\Omega(k_{\mathrm{mid}})=e^{\Delta S/k_B}$: about
+$0.36$ for the small deviation of (f), $10^{-3}$ for (e), and
+$3\times10^{-26}$ for reaching $k=20$ in (g). Small fluctuations are
+therefore frequent for $N=\resN$, but large ones are exponentially
+suppressed, and the system spends almost all its time in the macrostates of
+maximum $\Omega$. ``Entropy increases'' thus means ``the system evolves
+towards the overwhelmingly most probable macrostates'', and the Second Law
+becomes an effective certainty only when $N$ is macroscopic.
+
+\paragraph{(k) Large $N$.} In the limit $N\to10^{23}$ the conclusions above
+become sharp:
+\begin{itemize}
+  \item The probability of any \emph{single} macrostate goes to zero, even the
+        most probable one: $P_{N/2}\approx\sqrt{2/(\pi N)}\approx2.5\times10^{-12}$
+        for $N=10^{23}$ (cases a, b).
+  \item The probability of any window of fixed \emph{relative} width around
+        $k/N=1/2$ tends to one, because $\sigma/\mu=1/\sqrt{N}\to0$. Windows of
+        $\pm10$ or $\pm20$ heads, however, become negligible compared with
+        $\sigma\approx1.6\times10^{11}$ (cases c, d).
+  \item For a deviation of fixed relative size $\delta=k/(N/2)-1$, the Gaussian
+        approximation gives $\Delta S/k_B\approx-N\delta^2/2$. Its magnitude
+        grows proportionally to $N$, so these fluctuations have probability
+        $e^{-N\delta^2/2}\to0$ (cases e, f, g).
+  \item The waiting times of (h) grow exponentially with $N$. For a
+        macroscopic system an ordered state is never observed, and the
+        macrostate of maximum entropy is reached with certainty. This is the
+        equilibrium state of thermodynamics.
+\end{itemize}
+
+% =====================================================================
+\section{Conclusions}
+% =====================================================================
+A system of coins captures the essential link between microscopic
+configurations and macroscopic thermodynamics. Computationally, exact
+enumeration of microstates is limited to $N\approx29$ within five
+minutes by its $O(2^N)$ cost, although the use of bitwise operations and
+generators keeps the memory constant. Direct floating-point evaluation of
+$\Omega(N,k)$ fails beyond $N=\resNOverflow$, whereas log-space combinatorics
+with $\ln\Gamma$ works for any $N$ with a negligible error and has been
+verified against exact integer results with unit tests.
+
+Physically, the multiplicity concentrates around $k=N/2$ with a relative
+width $1/\sqrt{N}$. For our system ($N=\resN$) a window of $\pm20$ heads
+around the centre already contains 99.8\,\% of the probability, and highly
+ordered states require waiting times $10^{21}$ times longer than the age of
+the Universe. Entropy decreases are possible but exponentially unlikely, and
+in the thermodynamic limit the maximum-entropy macrostate becomes a
+certainty. This is the statistical foundation of the Second Law of
+Thermodynamics.
+
+\appendix
+\section{AI collaboration and audit statement}
+In compliance with course policy, AI tools were used as code and writing
+assistants. Every AI-generated function was audited and validated with the
+\texttt{pytest} suite (log-space results against exact integer combinatorics).
+The prompts, the generated code and the modifications made by the team are
+logged in \texttt{AI\_STATEMENT.md} in the repository.
+
+\end{document}
