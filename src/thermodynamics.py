@@ -1,70 +1,43 @@
+"""Entropía, fluctuaciones y límite termodinámico."""
+from __future__ import annotations
 
-"""Thermodynamic calculations for the statistical physics laboratory."""
+import math
+import statistics
 
-import numpy as np
+from src.combinatorics import log_probability
 
-from src import combinatorics as comb
-
-
-K_B = 1.380649e-23  # Boltzmann constant, J/K
-SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
-AGE_OF_UNIVERSE_YEARS = 13.8e9  # Approximate age of the Universe
-
-
-def system_size(nia_last_two_digits: list[int]) -> tuple[float, int, int]:
-    """Calculate the harmonic mean M and system size N = 100 + M."""
-    if not nia_last_two_digits:
-        raise ValueError("The list of NIA digits cannot be empty.")
-
-    if any(
-        not isinstance(x, int) or isinstance(x, bool) or x <= 0 or x > 99
-        for x in nia_last_two_digits
-    ):
-        raise ValueError("Each NIA value must be an integer from 1 to 99.")
-
-    m_exact = len(nia_last_two_digits) / sum(
-        1 / x for x in nia_last_two_digits
-    )
-    m = int(m_exact)
-    n = 100 + m
-
-    return m_exact, m, n
+LN2 = math.log(2.0)
+K_B = 1.380649e-23  # J/K (valor exacto SI)
+SECONDS_PER_YEAR = 365.25 * 24 * 3600
+AGE_OF_UNIVERSE_YEARS = 1.38e10
 
 
-def entropy(n: int, k):
-    """Calculate Boltzmann entropy S = k_B * ln(Omega)."""
-    if np.any(np.asarray(k) < 0) or np.any(np.asarray(k) > n):
-        raise ValueError("k must be between 0 and n.")
+def compute_N(nia_digits: list[int], rounding: str = "round") -> tuple[float, int, int]:
+    """M = media armónica de los dos últimos dígitos; N = 100 + M.
 
-    return K_B * np.asarray(
-        [comb.ln_omega(n, int(value)) for value in np.atleast_1d(k)]
-    ) if np.ndim(k) > 0 else K_B * comb.ln_omega(n, int(k))
-
-
-def entropy_change(n: int, k1: int, k2: int) -> float:
-    """Calculate the entropy change S(k1) - S(k2), in J/K."""
-    return K_B * (comb.ln_omega(n, k1) - comb.ln_omega(n, k2))
-
-
-def waiting_time_seconds(n: int, k: int) -> float:
-    """Estimate the mean waiting time in seconds for macrostate k.
-
-    Assumes one independent system configuration is sampled per second.
+    Devuelve (media armónica exacta, M entero, N).
     """
-    p = comb.probability(n, k)
-
-    if p <= 0:
-        return float("inf")
-
-    return 1.0 / p
+    hm = statistics.harmonic_mean(nia_digits)
+    M = {"round": round, "floor": math.floor, "ceil": math.ceil}[rounding](hm)
+    return hm, int(M), 100 + int(M)
 
 
-def likelihood_ratio(n: int, k: int, k_min: int, k_max: int) -> float:
-    """Compare P(k) with the probability of a macrostate interval."""
-    interval_probability = comb.cumulative_probability(n, k_min, k_max)
+def relative_fluctuation(N: float) -> float:
+    """σ/μ = 1/√N."""
+    return 1.0 / math.sqrt(N)
 
-    if interval_probability <= 0:
-        return float("inf")
 
-    return comb.probability(n, k) / interval_probability
+def ln_omega_max_stirling(N: float) -> float:
+    """ln Ω(N, N/2) ≈ N ln2 - ½ ln(πN/2). Válido para N enorme (p.ej. 1e23),
+    donde lnΓ en float64 pierde toda la precisión por cancelación."""
+    return N * LN2 - 0.5 * math.log(math.pi * N / 2.0)
 
+
+def waiting_time_seconds(N: int, k: int, tosses_per_second: float = 1.0) -> float:
+    """Tiempo medio de espera para obtener k caras: 1 / (P_k · tiradas por segundo)."""
+    return math.exp(-float(log_probability(N, k))) / tosses_per_second
+
+
+def ln_prob_deviation(N: float, delta: float) -> float:
+    """ln P(k = N/2 · (1+δ)) ≈ -N δ²/2 - ½ ln(πN/2)  (aprox. gaussiana, σ=√N/2)."""
+    return -N * delta**2 / 2.0 - 0.5 * math.log(math.pi * N / 2.0)

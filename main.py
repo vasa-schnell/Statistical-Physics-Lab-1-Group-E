@@ -1,236 +1,126 @@
-"""Statistical Physics - Lab 1: Microstates of a system of coins.
-
-Runs every part of the practice and writes:
-  * report/figures/*.pdf   vector figures for the LaTeX report
-  * report/results.tex     LaTeX macros with every number quoted in the report
-  * report/benchmark.tex   rows of the enumeration benchmark table
-
-Usage:
-  python main.py                 # full run, enumeration wall at 300 s (5 min)
-  python main.py --wall 20       # quick run (smaller time limit)
-  python main.py --skip-benchmark
-"""
-
-from __future__ import annotations
-
-import argparse
-import math
+"""Ejecuta todo el Lab 1: tablas, benchmarks y figuras (PDF vectorial)."""
+import sys
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
 from src import combinatorics as comb
-from src import microstates as micro
-from src import thermodynamics as thermo
+from src import microstates as ms
+from src import thermodynamics as th
 
-# Last two digits of each team member's NIA -> edit with your own team's values
-NIA_LAST_TWO_DIGITS = [84, 54, 79, 95]
+NIA_LAST_TWO_DIGITS = [79, 95, 84, 54]
+FIG_DIR = Path("report/figures")
+FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-ROOT = Path(__file__).parent
-FIG_DIR = ROOT / "report" / "figures"
-TEX_RESULTS = ROOT / "report" / "results.tex"
-TEX_BENCH = ROOT / "report" / "benchmark.tex"
-
-# Figure style (sequential blue ramp for ordered N, neutral chrome)
-SEQ_BLUES = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
-BLUE, ORANGE = "#2a78d6", "#eb6834"
-INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
-plt.rcParams.update({
-    "figure.dpi": 150, "font.size": 10, "axes.edgecolor": AXIS, "axes.labelcolor": INK,
-    "xtick.color": INK2, "ytick.color": INK2, "axes.grid": True, "grid.color": GRID,
-    "grid.linewidth": 0.6, "axes.spines.top": False, "axes.spines.right": False,
-    "lines.linewidth": 2, "legend.frameon": False, "savefig.bbox": "tight",
-})
+# Evita UnicodeEncodeError al imprimir Ω, σ, μ en terminales de Windows (cp1252)
+sys.stdout.reconfigure(encoding="utf-8")
 
 
-def sci_tex(x: float, digits: int = 3) -> str:
-    """Format a float as LaTeX scientific notation, e.g. 5.20\\times10^{-11}."""
-    if x == 0:
-        return "0"
-    exp = int(math.floor(math.log10(abs(x))))
-    mant = x / 10**exp
-    if -2 <= exp <= 3:
-        return f"{x:.{max(digits - 1 - exp, 0)}f}"
-    return f"{mant:.{digits - 1}f}\\times10^{{{exp}}}"
+def main() -> None:
+    # ---------- Parámetro N ----------
+    hm, M, N = th.compute_N(NIA_LAST_TWO_DIGITS, rounding="round")  # o "floor"
+    k_mid = N // 2
+    print(f"Media armónica = {hm:.4f}  ->  M = {M},  N = {N},  k_mid = {k_mid}")
 
+    # ---------- 3.1 Enumeración N = 7 ----------
+    print("\n== N = 7 ==")
+    counts7 = ms.enumerate_counts(7)
+    samples = ms.sample_microstates(7)
+    for k in range(7, -1, -1):
+        print(f"k={k}  tails={7-k}  {samples[k]}  Ω={counts7[k]}")
+    print("Total:", counts7.sum())
 
-# --------------------------------------------------------------------------- #
-# Part 1: computational analysis of microstates
-# --------------------------------------------------------------------------- #
-def part_n7() -> None:
-    groups = micro.group_microstates(7)
-    print("\n=== N = 7: microstates grouped by number of heads ===")
-    for k, states in groups.items():
-        print(f"{k} heads, {7 - k} tails: Omega = {len(states):3d}  {states}")
+    # ---------- 3.2 Muro 2^N ----------
+    print("\n== Benchmark enumeración ==")
+    last = None
+    for n in (16, 18, 20, 22, 24):
+        r = ms.benchmark_enumeration(n)
+        last = r
+        print(f"N={n}: 2^N={r['states']:.3e}  t={r['time_mean']:.3f}±{r['time_std']:.3f} s  "
+              f"pico RAM (generador)={r['peak_bytes']/1e3:.1f} kB  "
+              f"RAM si fuese lista≈{r['list_bytes_estimate']/1e6:.0f} MB")
+    n_max = ms.estimate_N_max(last["N"], last["time_mean"], 300.0)
+    print(f"N_max estimado en 5 min ≈ {n_max:.1f}")
+    print(f"float(Ω(N, N/2)) desborda para N > {comb.float_overflow_N()}")
 
-
-def part_benchmark(wall: float) -> list[micro.BenchmarkResult]:
-    print(f"\n=== Enumeration benchmark (generator, limit {wall:.0f} s) ===")
-    results = micro.find_wall(time_limit=wall, n_start=10)
-    for r in results:
-        print(f"N={r.n:2d}  2^N={r.n_states:>12,d}  t={r.seconds:9.3f} s  peak RAM={r.peak_mib:8.3f} MiB")
-    # Naive list-based version, only up to N=22 to keep RAM reasonable
-    naive = [micro.benchmark_enumeration(n, store=True) for n in range(10, 23, 2)]
-    print("--- naive (all states stored in a list) ---")
-    for r in naive:
-        print(f"N={r.n:2d}  t={r.seconds:8.3f} s  peak RAM={r.peak_mib:9.2f} MiB")
-
-    rows = []
-    naive_by_n = {r.n: r for r in naive}
-    for r in results:
-        nv = naive_by_n.get(r.n)
-        nv_mem = f"{nv.peak_mib:.1f}" if nv else "--"
-        rows.append(f"{r.n} & " + f"{r.n_states:,}".replace(",", "{,}") + f" & {r.seconds:.3f} & {r.peak_mib:.3f} & {nv_mem} \\\\")
-    TEX_BENCH.write_text("\n".join(rows) + "\n", encoding="utf-8")
-
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 3.4))
-    ns = [r.n for r in results]
-    a1.semilogy(ns, [r.seconds for r in results], "o-", color=BLUE, ms=5)
-    if len(ns) > 2:  # fitted 2^N slope through the last point
-        t_last = results[-1].seconds
-        a1.semilogy(ns, [t_last * 2.0 ** (n - ns[-1]) for n in ns], "--", color=MUTED, lw=1)
-        a1.text(ns[0], t_last * 2.0 ** (ns[0] - ns[-1]) * 2.5, r"$\propto 2^N$", color=INK2)
-    a1.set(xlabel="Number of coins $N$", ylabel="Wall-clock time (s)", title="Run time")
-    a2.semilogy(ns, [r.peak_mib for r in results], "o-", color=BLUE, ms=5, label="generator")
-    a2.semilogy([r.n for r in naive], [r.peak_mib for r in naive], "s-", color=ORANGE, ms=5, label="list of states")
-    a2.set(xlabel="Number of coins $N$", ylabel="Peak memory (MiB)", title="Memory")
-    a2.legend()
-    fig.tight_layout()
-    fig.savefig(FIG_DIR / "benchmark.pdf")
-    plt.close(fig)
-    return results
-
-
-def part_distributions() -> None:
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 3.4))
-    for n, c in zip([20, 50, 80, 100], SEQ_BLUES):
-        k, p = comb.distribution(n)
-        a1.plot(k, p, "o-", color=c, ms=3, lw=1.5, label=f"$N={n}$")
-        a2.plot(k / n, p * n, "-", color=c, lw=1.5, label=f"$N={n}$")
-    a1.set(xlabel="Number of heads $k$", ylabel=r"$P_k=\Omega(N,k)/2^N$", title="Macrostate probability")
-    a2.set(xlabel="Fraction of heads $k/N$", ylabel=r"$N\,P_k$", title=r"Rescaled: peak narrows as $1/\sqrt{N}$")
-    a1.legend()
+    # ---------- 3.3 Distribuciones ----------
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+    for n in (20, 50, 80, 100):
+        k, P = comb.distribution(n)
+        ax[0].plot(k, P, "o-", ms=3, label=f"N={n}")
+        ax[1].plot(k / n, P * np.sqrt(n), label=f"N={n}")
+    ax[0].set(xlabel="k (caras)", ylabel=r"$P_k=\Omega/2^N$")
+    ax[1].set(xlabel="k/N", ylabel=r"$\sqrt{N}\,P_k$")
+    for a in ax:
+        a.legend()
+        a.grid(alpha=0.3)
     fig.tight_layout()
     fig.savefig(FIG_DIR / "distributions.pdf")
     plt.close(fig)
 
+    # ---------- 3.4 Límite termodinámico ----------
+    print("\n== Fluctuaciones relativas σ/μ = 1/√N ==")
+    for n in (20, 100, N, 10**6, 10**12, 1e23):
+        print(f"N={n:.3e}: σ/μ = {th.relative_fluctuation(n):.3e}")
+    N_big = 1e23
+    print(f"ln Ω(N,N/2) para N=1e23 ≈ {th.ln_omega_max_stirling(N_big):.6e}"
+          f"  (S/k_B ≈ N ln2 = {N_big*th.LN2:.6e})")
+    print(f"ln P(desviación 1e-6 en k/N) ≈ {th.ln_prob_deviation(N_big, 2e-6):.3e}")
 
-def part_overflow() -> dict[str, str]:
-    """Largest N for which Omega(N, N/2) still fits in a float64."""
-    n = 2
-    while True:
-        try:
-            float(math.comb(n + 2, (n + 2) // 2))
-        except OverflowError:
-            break
-        n += 2
-    print(f"\nfloat(Omega(N, N/2)) overflows for N > {n}")
-    return {"NOverflow": str(n)}
-
-
-def part_thermo_limit() -> None:
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 3.4))
-    for n, c in zip([1e2, 1e3, 1e4, 1e5], SEQ_BLUES):
-        x = np.linspace(0.3, 0.7, 40001)
-        p = comb.probability(n, x * n) * n  # continuous extension via lnGamma
-        a1.plot(x, p / p.max(), color=c, lw=1.5, label=f"$N=10^{{{int(math.log10(n))}}}$")
-    a1.set(xlabel="Fraction of heads $k/N$", ylabel="$P / P_{max}$", title="Distribution vs $N$")
-    a1.legend()
-    ns = np.logspace(1, 23, 50)
-    a2.loglog(ns, [comb.relative_width(n) for n in ns], color=BLUE)
-    a2.set(xlabel="Number of coins $N$", ylabel=r"$\sigma/\mu = 1/\sqrt{N}$", title="Relative fluctuation")
-    a2.annotate(r"$N=10^{23}$: $3\times10^{-12}$", xy=(1e23, 1 / math.sqrt(1e23)),
-                xytext=(1e7, 1e-11), color=INK2, arrowprops=dict(arrowstyle="-", color=MUTED))
+    ns = np.logspace(1, 23, 200)
+    fig, ax = plt.subplots(figsize=(5, 3.5))
+    ax.loglog(ns, 1 / np.sqrt(ns))
+    ax.set(xlabel="N", ylabel=r"$\sigma/\mu=1/\sqrt{N}$")
+    ax.grid(alpha=0.3, which="both")
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "thermodynamic_limit.pdf")
+    fig.savefig(FIG_DIR / "relative_fluctuation.pdf")
     plt.close(fig)
 
+    # ---------- 4.2 Tabla 3 ----------
+    print(f"\n== Tabla 3 (N = {N}) ==")
+    P30 = float(comb.probability(N, 30))
+    Pmid = float(comb.probability(N, k_mid))
+    Pint = comb.probability_range(N, k_mid - 10, k_mid + 10)
+    k1, k2 = k_mid + 25, k_mid
+    dS = comb.delta_S_over_kB(N, k1, k2)
+    print(f"P(k=30)                      = {P30:.4e}")
+    print(f"P(k={k_mid}) (más probable)     = {Pmid:.4e}   (ΔS/kB = 0)")
+    print(f"P(k∈[{k_mid-10},{k_mid+10}])         = {Pint:.6f}")
+    print(f"ΔS/kB (k={k1} -> k={k2})     = {dS:.4f}   (Ω ratio = {np.exp(dS):.4e})")
 
-# --------------------------------------------------------------------------- #
-# Part 2: probabilities, entropy and thermodynamics for N = 100 + M
-# --------------------------------------------------------------------------- #
-def part_thermodynamics() -> dict[str, str]:
-    m_exact, m, n = thermo.system_size(NIA_LAST_TWO_DIGITS)
-    h = n // 2  # N/2 rounded down (N odd -> k=66 and k=67 are equally probable)
-    print(f"\n=== N = 100 + M: harmonic mean = {m_exact:.6f} -> M = {m}, N = {n} ===")
+    # ---------- 4.2 Resto de la Parte 2 ----------
+    Pd = comb.probability_range(N, k_mid - 20, k_mid + 20)
+    print(f"P(cruces∈[{k_mid-20},{k_mid+20}])      = {Pd:.6f}   (simetría caras/cruces)")
+    S_max = float(comb.log_omega(N, k_mid))
+    print(f"S_max/kB = {S_max:.4f}   S_max = {th.K_B * S_max:.4e} J/K")
+    for label, (a, b) in {"e": (k_mid + 25, k_mid), "f": (k_mid + 10, k_mid),
+                          "g": (k_mid, 20)}.items():
+        x = comb.delta_S_over_kB(N, a, b)
+        print(f"({label}) ΔS(k={a}, k={b}): ΔS/kB = {x:.4f}   ΔS = {th.K_B * x:.4e} J/K")
+    err = comb.log_omega_error_bound(N, k_mid)
+    print(f"Incertidumbre: |δ lnΩ| ≲ {err:.1e}  ->  δS ≈ {th.K_B * err:.1e} J/K")
 
-    res = {
-        "Mexact": f"{m_exact:.4f}", "M": str(m), "N": str(n), "Nhalf": str(h),
-        "Pa": comb.probability(n, 30),
-        "Pb": comb.probability(n, h),
-        "Pc": comb.cumulative_probability(n, h - 10, h + 10),
-        "Pd": comb.cumulative_probability(n, h - 20, h + 20),
-        "Smax": thermo.entropy(n, h),
-        "dSe": thermo.entropy_change(n, h + 25, h),
-        "dSf": thermo.entropy_change(n, h + 10, h),
-        "dSg": thermo.entropy_change(n, h, 20),
-        "tSec": thermo.waiting_time_seconds(n, 8),
-        "ratio": thermo.likelihood_ratio(n, h, m - 10, m + 10),
-        "ratioHalf": thermo.likelihood_ratio(n, h, h - 10, h + 10),
-    }
-    res["tYears"] = res["tSec"] / thermo.SECONDS_PER_YEAR
-    res["tAges"] = res["tYears"] / thermo.AGE_OF_UNIVERSE_YEARS
-    err = comb.ln_omega_abs_error(n, h)
-    res["lnOmegaErr"] = err
-    res["dSErr"] = thermo.K_B * err
-    res["SmaxOverkB"] = comb.ln_omega(n, h)
+    t = th.waiting_time_seconds(N, 8)
+    years = t / th.SECONDS_PER_YEAR
+    print(f"(h) Espera para k=8: {t:.3e} s = {years:.3e} años "
+          f"= {years / th.AGE_OF_UNIVERSE_YEARS:.3e} edades del universo")
+    ratio = comb.likelihood_ratio(N, k_mid, M - 10, M + 10)
+    print(f"(i) P(k={k_mid}) / P({M-10} ≤ k ≤ {M+10}) = {ratio:.4f}")
 
-    for key in ["Pa", "Pb", "Pc", "Pd", "Smax", "dSe", "dSf", "dSg", "tSec", "tYears", "ratio", "dSErr"]:
-        print(f"{key:>8s} = {res[key]:.6e}")
-
-    # Figure: entropy and probability in two stacked panels (one y-axis each)
-    k = np.arange(n + 1)
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(6, 5), sharex=True)
-    a1.plot(k, thermo.entropy(n, k), color=BLUE)
-    a1.set(ylabel="Entropy $S$ (J/K)", title=f"Entropy and probability, $N={n}$")
-    a2.plot(k, comb.probability(n, k), color=BLUE)
-    a2.axvspan(h - 10, h + 10, color=BLUE, alpha=0.12, lw=0)
-    a2.text(h + 12, comb.probability(n, h) * 0.8, r"$N/2\pm10$", color=INK2)
-    a2.set(xlabel="Number of heads $k$", ylabel="$P_k$")
+    # Figura con la distribución de N y marcas
+    k, P = comb.distribution(N)
+    fig, ax = plt.subplots(figsize=(6, 3.8))
+    ax.bar(k, P, width=1.0, color="C0", alpha=0.6)
+    ax.axvspan(k_mid - 10, k_mid + 10, color="C1", alpha=0.25, label=r"$N/2\pm10$")
+    ax.axvline(30, color="C3", ls="--", label="k=30")
+    ax.set(xlabel="k", ylabel=r"$P_k$", title=f"N={N}")
+    ax.legend()
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "entropy_probability.pdf")
+    fig.savefig(FIG_DIR / "distribution_N.pdf")
     plt.close(fig)
 
-    out = {}
-    for key, v in res.items():
-        out[key] = v if isinstance(v, str) else sci_tex(v, 5 if key.startswith("P") else 4)
-    return out
-
-
-def write_results(macros: dict[str, str]) -> None:
-    lines = ["% Auto-generated by main.py -- do not edit by hand"]
-    for key, val in macros.items():
-        name = "res" + "".join(ch for ch in key if ch.isalpha())
-        lines.append(f"\\newcommand{{\\{name}}}{{{val}}}")
-    TEX_RESULTS.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--wall", type=float, default=300.0, help="time limit (s) for full enumeration")
-    parser.add_argument("--skip-benchmark", action="store_true")
-    args = parser.parse_args()
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
-
-    part_n7()
-    macros: dict[str, str] = {}
-    if not args.skip_benchmark:
-        bench = part_benchmark(args.wall)
-        macros["NWall"] = str(bench[-1].n)
-        macros["TWall"] = f"{bench[-1].seconds:.1f}"
-        macros["WallLimit"] = f"{args.wall:.0f}"
-    else:
-        macros.update({"NWall": "?", "TWall": "?", "WallLimit": f"{args.wall:.0f}"})
-    part_distributions()
-    macros.update(part_overflow())
-    part_thermo_limit()
-    macros.update(part_thermodynamics())
-    write_results(macros)
-    print(f"\nFigures written to {FIG_DIR}\nLaTeX macros written to {TEX_RESULTS}")
+    print("\nFiguras guardadas en", FIG_DIR)
 
 
 if __name__ == "__main__":
