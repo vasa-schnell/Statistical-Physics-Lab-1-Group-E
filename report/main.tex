@@ -171,25 +171,27 @@ would need $\approx 36\,\mathrm{B}\times2^N$ of RAM. Table~\ref{tab:bench}
 reports the measured times (mean $\pm$ standard deviation over 3 runs) and
 peak memory. Extrapolating $t(N)=t_{\mathrm{ref}}\,2^{N-N_{\mathrm{ref}}}$, the
 largest $N$ that can be fully enumerated within 5~minutes on our laptop is
-$N_{\max}=24+\log_2(300/5.857)\approx29.7$, i.e.\ $N_{\max}=29$
-($2^{29}\approx5.4\times10^{8}$ microstates). Each time $N$ increases by 2 the
-run time is multiplied by $\approx4.0$, confirming the $2^N$ scaling.
+$N_{\max}=24+\log_2(300/3.576)\approx30.4$, i.e.\ $N_{\max}\approx30$
+($2^{30}\approx1.1\times10^{9}$ microstates). Repeating the whole benchmark
+on the same laptop gave values between 29.4 and 30.4, depending on the
+machine load, so we estimate $N_{\max}=30\pm1$. Each time $N$ increases by 2
+the run time is multiplied by $\approx4.0$, confirming the $2^N$ scaling.
 
 \begin{table}[h]
 \centering
 \caption{Run time (mean $\pm$ standard deviation of 3 runs) and peak memory
 of the full enumeration, measured on an Intel laptop (12 logical CPUs)
-with Python 3.12 and \texttt{tracemalloc}.}
+with Python 3.11 and \texttt{tracemalloc}.}
 \label{tab:bench}
 \begin{tabular}{rrccc}
 \toprule
 $N$ & $2^N$ & Time (s) & Peak RAM, generator & RAM if stored in a list\\
 \midrule
-16 & $6.55\times10^{4}$ & $0.034\pm0.007$ & 0.6~kB & $\approx 2.4$~MB\\
-18 & $2.62\times10^{5}$ & $0.092\pm0.004$ & 0.6~kB & $\approx 9.4$~MB\\
-20 & $1.05\times10^{6}$ & $0.366\pm0.011$ & 0.6~kB & $\approx 38$~MB\\
-22 & $4.19\times10^{6}$ & $1.449\pm0.008$ & 0.6~kB & $\approx 151$~MB\\
-24 & $1.68\times10^{7}$ & $5.857\pm0.037$ & 0.6~kB & $\approx 604$~MB\\
+16 & $6.55\times10^{4}$ & $0.014\pm0.001$ & 0.6~kB & $\approx 2.4$~MB\\
+18 & $2.62\times10^{5}$ & $0.055\pm0.001$ & 0.6~kB & $\approx 9.4$~MB\\
+20 & $1.05\times10^{6}$ & $0.220\pm0.002$ & 0.6~kB & $\approx 38$~MB\\
+22 & $4.19\times10^{6}$ & $0.875\pm0.004$ & 0.7~kB & $\approx 151$~MB\\
+24 & $1.68\times10^{7}$ & $3.576\pm0.046$ & 0.7~kB & $\approx 604$~MB\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -236,7 +238,8 @@ $S_{\max}/k_B\approx N\ln2\approx6.9\times10^{22}$.
 \begin{figure}[h]
 \centering
 \safefig{thermodynamic_limit.pdf}{0.95\textwidth}
-\caption{Narrowing of the distribution and relative fluctuation
+\caption{Left: normalised distribution $P_k/P_{\max}$ against $k/N$ for
+$N=10^2$--$10^5$, which narrows around $k/N=1/2$. Right: relative fluctuation
 $\sigma/\mu=1/\sqrt{N}$ up to $N=10^{23}$.}
 \label{fig:limit}
 \end{figure}
@@ -388,7 +391,7 @@ become sharp:
 % =====================================================================
 A system of coins captures the essential link between microscopic
 configurations and macroscopic thermodynamics. Computationally, exact
-enumeration of microstates is limited to $N\approx29$ within five
+enumeration of microstates is limited to $N\approx30$ within five
 minutes by its $O(2^N)$ cost, although the use of bitwise operations and
 generators keeps the memory constant. Direct floating-point evaluation of
 $\Omega(N,k)$ fails beyond $N=\resNOverflow$, whereas log-space combinatorics

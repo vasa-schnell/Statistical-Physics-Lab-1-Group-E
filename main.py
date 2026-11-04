@@ -77,6 +77,21 @@ def main() -> None:
     fig.savefig(FIG_DIR / "relative_fluctuation.pdf")
     plt.close(fig)
 
+    # Estrechamiento de la distribución para N grande + fluctuación relativa
+    fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+    for n in (10**2, 10**3, 10**4, 10**5):
+        k, P = comb.distribution(n)
+        ax[0].plot(k / n, P / P.max(), label=f"N=$10^{{{int(np.log10(n))}}}$")
+    ax[0].set(xlim=(0.3, 0.7), xlabel="k/N", ylabel=r"$P_k/P_{max}$")
+    ax[1].loglog(ns, 1 / np.sqrt(ns))
+    ax[1].set(xlabel="N", ylabel=r"$\sigma/\mu=1/\sqrt{N}$")
+    ax[0].legend()
+    for a in ax:
+        a.grid(alpha=0.3, which="both")
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "thermodynamic_limit.pdf")
+    plt.close(fig)
+
     # ---------- 4.2 Tabla 3 ----------
     print(f"\n== Tabla 3 (N = {N}) ==")
     P30 = float(comb.probability(N, 30))
